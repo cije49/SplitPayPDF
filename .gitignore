@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual envs
+venv/
+.venv/
+
+# PyInstaller
+build/
+dist/
+*.spec
+*.exe
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment / secrets
+.env

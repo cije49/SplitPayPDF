@@ -73,8 +73,6 @@ Additional features:
 
 ## 📸 Screenshots
 
-> Replace the placeholders below with your actual images.
-
 ### Main Interface  
 ![Main UI](images/main_ui.png)
 

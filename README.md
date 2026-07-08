@@ -1,101 +1,78 @@
 # SplitPayPDF
 
-SplitPayPDF is a Windows desktop application for splitting, managing, and processing PDF files.  
-It features a clean ttkbootstrap UI, intuitive help popups, and multiple PDF utilities built into a single tool.
+SplitPayPDF is a Windows desktop application for splitting payroll PDFs into
+per-employee files and for everyday PDF utilities (extract, merge). It has a
+clean ttkbootstrap UI, a guided **Pattern Builder**, a safe preview mode, and a
+results table + log so you can see exactly what will happen before it does.
+
+The code is split into two modules: `SplitPayPDF.py` (GUI only) and
+`splitpay_core.py` (all PDF/config/naming logic, no GUI dependencies).
 
 ---
 
-# 📑 Table of Contents
+## 📑 Table of Contents
 
 - [✨ Features](#-features)
-  - [PDF Splitter](#pdf-splitter)
-  - [Advanced Debug & Schema-Based Naming System](#advanced-debug--schema-based-naming-system)
+  - [Payroll Splitter](#payroll-splitter)
+  - [Pattern Builder & schema naming](#pattern-builder--schema-naming)
   - [PDF Tools](#pdf-tools)
-- [📸 Screenshots](#-screenshots)
 - [🛠️ Requirements](#️-requirements)
 - [📥 Installation](#-installation)
-- [🚀 Packaging / Building EXE](#-packaging--building-exe)
-- [📂 Folder Structure](#-folder-structure)
+- [🧪 Running the tests](#-running-the-tests)
+- [📂 Folder structure](#-folder-structure)
 - [📜 License](#-license)
 
 ---
 
 ## ✨ Features
 
-### **PDF Splitter**
-- Split PDFs by:
-  - Page ranges  
-  - Every N pages  
-  - Specific lists of pages  
-- Auto-rename duplicate output files  
-- Intuitive progress dialogs  
-- Support for Unicode paths
+### Payroll Splitter
 
----
+- Splits a multi-page payroll PDF into **one output PDF per page**.
+- Names each file and (optionally) each employee folder from **line-based
+  tokens** read off the page — e.g. `[LINE 1]_[LINE 43(17/26)].pdf`.
+- Routes pages it can't name to a **`!manual_review`** folder instead of saving
+  junk filenames.
+- **SAFE debug mode** simulates the whole run — no folders, no PDFs, no audit
+  CSV — so you can review the results table and log first.
+- Colour-coded **results table** plus a live **log** of every page.
+- Writes a UTF-8 **audit CSV** of the run (skipped in SAFE mode).
+- Duplicate-safe output names, employee-folder routing, and a schema **lock**
+  to prevent accidental edits before a run.
 
-### **Advanced Debug & Schema-Based Naming System**
+### Pattern Builder & schema naming
 
-SplitPayPDF includes a powerful **debug reading mode** that displays each parsed line of a PDF as:
+A guided helper for building the naming patterns:
 
-```
-[LINE x] <content>
-```
+- Load any page and see its numbered lines (matching SAFE-mode output).
+- Click a line, optionally set a **character range** (From/To), and insert the
+  token **at the cursor** in a normal editable field.
+- Type literal separators/text, use Backspace/Delete, paste, and **Ctrl+Z /
+  Ctrl+Y** undo/redo.
+- **Live preview** of the resulting filename and folder for the loaded page.
+- Save/load named **schemas** (stored in `%APPDATA%\SplitPayPDF\Schemas`).
 
-This allows users to inspect document structure and build custom **naming schemas** for:
+### PDF Tools
 
-- Employee folders  
-- Output PDF filenames  
-- Automated organization  
+- **Extract** a single page, a page range, or one file per page.
+- **Merge** multiple PDFs into one.
+- Output names are operation-specific and derived from the source file, e.g.
+  `payroll_page_5.pdf`, `payroll_pages_5-10.pdf`, `merged_2026-07-08.pdf`.
+- A compact progress bar with a **Cancel** button appears for longer jobs and
+  stays hidden while idle.
 
-When debug mode is disabled, the app will automatically:
-
-- Extract naming information  
-- Generate or match employee folders  
-- Save each split PDF into the correct destination  
-
-Additional features:
-
-- Schemas can be **saved** and **loaded**  
-- All schemas & logs are stored in **APPDATA**  
-- A **`!manual_review`** folder is automatically created for failed naming extractions  
-- An **audit log** records all steps (toggle option planned)
-
----
-
-## **PDF Tools**
-- PDF → CSV extraction using PyMuPDF + pandas  
-- Page counting  
-- PDF metadata extraction  
-- Basic PDF merging and splitting  
-- Clean UI with contextual help popups  
-
----
-
-## 📸 Screenshots
-
-### Main Interface  
-![Main UI](images/main_ui.png)
-
-### Debug Mode  
-![Debug Mode](images/debug_mode.png)
-
-### Schema Builder  
-![Schema Builder](images/schema_builder.png)
-
-### Demo  
-![Demo GIF](images/demo.gif)
+Other niceties: light/dark **themes** (ttkbootstrap), **drag-and-drop** a PDF
+onto the window, and window size / last-used settings persisted between runs.
 
 ---
 
 ## 🛠️ Requirements
 
-Install dependencies:
-
 ```bash
 pip install -r requirements.txt
 ```
 
-Your `requirements.txt` should contain:
+`requirements.txt` contains:
 
 ```
 pymupdf>=1.24.0
@@ -103,9 +80,9 @@ ttkbootstrap>=1.10.1
 tkinterdnd2>=0.4.0
 ```
 
-(`tkinter` is part of the Python standard library. `ttkbootstrap` and
-`tkinterdnd2` are optional at runtime — the app falls back to the classic
-theme and no drag-and-drop if they are missing.)
+`tkinter` ships with Python. `ttkbootstrap` and `tkinterdnd2` are optional at
+runtime — without them the app falls back to the classic theme and disables
+drag-and-drop, but everything else works.
 
 ---
 
@@ -113,74 +90,71 @@ theme and no drag-and-drop if they are missing.)
 
 ### Option 1 — Run from source
 
-1. Install Python 3.10+  
+1. Install Python 3.10+ (from python.org, with the Tcl/Tk option).
 2. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
-3. Run the application:
+3. Run:
    ```bash
    python SplitPayPDF.py
    ```
 
 ### Option 2 — Portable folder (no install, no admin, no pip on target)
 
-For locked-down environments (e.g. Defender ASR blocking .exe files), build a
+For locked-down environments (e.g. Defender ASR blocking `.exe` files), build a
 copy-and-run folder with a bundled Python runtime:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build_portable.ps1
 ```
 
-Users just copy `SplitPayPDF_Portable\` and double-click `Run_SplitPayPDF.cmd`.
-See [BUILD_PORTABLE.md](BUILD_PORTABLE.md) for details.
+Users then copy `SplitPayPDF_Portable\` and double-click `Run_SplitPayPDF.cmd`.
+See [BUILD_PORTABLE.md](BUILD_PORTABLE.md) for full details. (The generated
+`SplitPayPDF_Portable/` folder is git-ignored because it embeds a full Python
+runtime.)
 
 ---
 
-## 🚀 Packaging / Building EXE
+## 🧪 Running the tests
 
-To build a standalone Windows executable:
+The core logic has unit tests that need neither a GUI nor PyMuPDF:
 
-1. Install PyInstaller:
-   ```bash
-   pip install pyinstaller
-   ```
-2. Build with:
-   ```bash
-   pyinstaller --noconfirm SplitPayPDF.spec
-   ```
-3. Output EXE will be located in:
-   ```
-   dist/SplitPayPDF/SplitPayPDF.exe
-   ```
+```bash
+python -m unittest discover tests -v
+```
 
 ---
 
-## 📂 Folder Structure
+## 📂 Folder structure
 
 ```
 SplitPayPDF/
 │
-├── SplitPayPDF.py
-├── SplitPayPDF.spec
+├── SplitPayPDF.py          # GUI layer
+├── splitpay_core.py        # PDF / config / naming logic (no GUI)
+├── build_portable.ps1      # Builds the portable, bundled-Python folder
 ├── requirements.txt
 ├── README.md
+├── BUILD_PORTABLE.md
 ├── LICENSE
 ├── .gitignore
 │
 ├── images/
-│   ├── main_ui.png
-│   ├── debug_mode.png
-│   ├── schema_builder.png
-│   └── demo.gif
+│   └── icon.png
 │
-└── dist/
-    └── SplitPayPDF.exe
+├── packaging/
+│   ├── Run_SplitPayPDF.cmd
+│   ├── README_PORTABLE.txt
+│   └── IT_SECURITY_NOTES.txt
+│
+└── tests/
+    └── test_core.py
 ```
 
 ---
 
 ## 📜 License
 
-This project is open-source under the MIT License.  
-See the `LICENSE` file for full details.
+This project is open-source under the MIT License. See the `LICENSE` file for
+full details.

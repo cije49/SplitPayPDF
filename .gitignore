@@ -1,22 +1,21 @@
-# Python
+# Generated portable build
+SplitPayPDF_Portable/
+
+# Python cache
 __pycache__/
-*.py[cod]
+*.pyc
 *.pyo
-*.pyd
 
-# Virtual envs
-venv/
+# Test cache
+.pytest_cache/
+
+# Virtual environments
 .venv/
+venv/
 
-# PyInstaller
-build/
-dist/
-*.spec
-*.exe
+# IDE/editor files
+.vscode/
+.idea/
 
-# OS files
-.DS_Store
-Thumbs.db
-
-# Environment / secrets
-.env
+# Local logs
+*.log

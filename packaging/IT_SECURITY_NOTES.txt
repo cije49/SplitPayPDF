@@ -1,0 +1,51 @@
+SplitPayPDF Portable - Notes for IT / Security Review
+=====================================================
+
+WHAT THIS IS
+------------
+A portable folder containing:
+- The official CPython interpreter for Windows ("embeddable
+  distribution" published by the Python Software Foundation at
+  python.org; python.exe and the Python DLLs are Authenticode-signed
+  by the PSF).
+- Two open-source Python libraries installed as plain files:
+  PyMuPDF (PDF processing) and pandas (CSV audit log), plus their
+  dependencies (e.g. numpy).
+- The application source code as a readable .py file (app\SplitPayPDF.py).
+- A plain-text .cmd launcher that starts:
+      python\python.exe app\SplitPayPDF.py
+
+WHAT THIS IS NOT
+----------------
+- It is NOT a compiled/packed .exe (no PyInstaller, no py2exe, no
+  self-extracting archive). There is no bundled unpacking stub of the
+  kind commonly flagged by Defender ASR rules.
+- It does NOT install anything: no registry changes, no services,
+  no scheduled tasks, no drivers, no PATH changes.
+
+RUNTIME BEHAVIOR
+----------------
+- No admin rights required.
+- No internet access required or attempted at runtime. The app makes
+  no network connections; all PDF processing is local.
+- pip is never run on the user machine. All libraries are pre-installed
+  on a build machine and shipped as files inside the folder.
+- The original source PDF is opened read-only and never modified.
+- Files written by the app:
+    * Split PDF output files - only into the output folder chosen by
+      the user in the UI.
+    * Per-user settings, naming schemas and a text log:
+        %APPDATA%\SplitPayPDF\
+      (No writes to Program Files, HKLM, or system locations.)
+    * A CSV audit log in the chosen output folder.
+- The app never silently overwrites or deletes files; duplicate output
+  names get numeric suffixes (_1, _2, ...).
+- The launcher and application source are plain text and can be fully
+  inspected before deployment.
+
+AUDITABILITY
+------------
+- app\SplitPayPDF.py is the complete application - human-readable.
+- Run_SplitPayPDF.cmd is human-readable.
+- The python\ folder can be hash-compared against the official
+  python.org embeddable ZIP for the bundled version.

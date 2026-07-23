@@ -19,3 +19,5 @@ venv/
 
 # Local logs
 *.log
+
+SplitPayPDF_Portable*.7z

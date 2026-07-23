@@ -14,6 +14,20 @@ from datetime import datetime
 
 import fitz  # PyMuPDF
 
+# -------------------- App metadata --------------------
+
+APP_NAME = "SplitPayPDF"
+APP_VERSION = "1.1.0"
+APP_DESCRIPTION = (
+    "Split payroll PDFs into per-employee files and run everyday PDF tools "
+    "(extract, merge) — fully local, no installation required."
+)
+
+
+class PdfError(Exception):
+    """A PDF problem with a message that is safe to show a business user."""
+
+
 # -------------------- App dirs / config --------------------
 
 
@@ -96,12 +110,29 @@ def list_schemas():
     return [f[:-5] for f in os.listdir(schema_dir) if f.endswith(".json")]
 
 
+def _read_schema_file(path):
+    """Read a schema JSON file, returning a dict or None on any failure.
+
+    Never raises — a corrupt or unreadable schema logs the technical detail
+    and returns None so callers can degrade gracefully instead of crashing.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            write_app_log(f"[schema-read-error] {path}: not a JSON object")
+            return None
+        return data
+    except Exception as e:
+        write_app_log(f"[schema-read-error] {path}: {e!r}")
+        return None
+
+
 def load_schema(name):
     path = os.path.join(get_schema_folder(), f"{name}.json")
     if not os.path.exists(path):
         return None
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    return _read_schema_file(path)
 
 
 def save_schema(name, file_pattern, folder_pattern):
@@ -287,6 +318,105 @@ def merge_default_filename() -> str:
     return f"merged_{datetime.now().strftime('%Y-%m-%d')}.pdf"
 
 
+# -------------------- List ordering helper (pure) --------------------
+
+
+def move_item(items, index, delta):
+    """Return (new_list, new_index) after moving items[index] by delta (±1).
+
+    Used by the merge list's Move up / Move down. No-op (returns the same list
+    and index) if the move would fall outside the list.
+    """
+    n = len(items)
+    if index is None or index < 0 or index >= n:
+        return list(items), index
+    target = index + delta
+    if target < 0 or target >= n:
+        return list(items), index
+    out = list(items)
+    out[index], out[target] = out[target], out[index]
+    return out, target
+
+
+# -------------------- PDF open / inspection (safety) --------------------
+
+
+def _friendly_open_error(exc) -> str:
+    """Map a low-level PDF open/read failure to a user-facing message."""
+    msg = str(exc).lower()
+    if "password" in msg or "encrypt" in msg:
+        return (
+            "This PDF is password-protected. Please provide an unlocked PDF "
+            "and try again."
+        )
+    if any(k in msg for k in ("no such file", "not found", "does not exist")):
+        return "The PDF file could not be found. Check the path and try again."
+    return (
+        "This file could not be opened as a PDF. It may be corrupted, "
+        "incomplete, or not a PDF file."
+    )
+
+
+def open_pdf_checked(path: str):
+    """Open a PDF, raising PdfError(friendly message) for common problems.
+
+    Returns an open fitz document (caller must close it). Password-protected,
+    corrupt, missing and non-PDF files all raise PdfError with a message that
+    is safe to show a user; the technical detail is written to the app log.
+    """
+    try:
+        doc = fitz.open(path)
+    except Exception as e:
+        write_app_log(f"[pdf-open-error] {path}: {e!r}")
+        raise PdfError(_friendly_open_error(e)) from e
+
+    if getattr(doc, "needs_pass", False):
+        try:
+            doc.close()
+        except Exception:
+            pass
+        write_app_log(f"[pdf-open-error] {path}: password-protected")
+        raise PdfError(
+            "This PDF is password-protected. Please provide an unlocked PDF "
+            "and try again."
+        )
+    return doc
+
+
+def text_is_effectively_empty(samples) -> bool:
+    """True if none of the sampled page texts contain any selectable text."""
+    return not any((s or "").strip() for s in samples)
+
+
+def sample_pdf_text(doc, pages: int = 3):
+    """Return the text of the first `pages` pages (or fewer) of an open doc."""
+    out = []
+    for i in range(min(pages, len(doc))):
+        out.append(doc.load_page(i).get_text())
+    return out
+
+
+def preflight_pdf(path: str, sample_pages: int = 3):
+    """Inspect a PDF for GUI pre-checks.
+
+    Returns {"page_count": int, "has_text": bool}. Raises PdfError for
+    password-protected / corrupt / missing files (friendly message).
+    """
+    doc = open_pdf_checked(path)
+    try:
+        page_count = len(doc)
+        samples = sample_pdf_text(doc, sample_pages)
+        return {
+            "page_count": page_count,
+            "has_text": not text_is_effectively_empty(samples),
+        }
+    finally:
+        try:
+            doc.close()
+        except Exception:
+            pass
+
+
 # -------------------- Full payroll engine --------------------
 
 
@@ -309,7 +439,7 @@ def split_pdf_full(
 
     log(f"🕒 Split started: {inp_path}")
 
-    doc = fitz.open(inp_path)
+    doc = open_pdf_checked(inp_path)
     total_pages = len(doc)
     if total_pages == 0:
         log("⚠ PDF has no pages.")
@@ -504,7 +634,7 @@ def extract_pages(
             log_callback(msg)
 
     log(f"🕒 Extract started: {inp_path}")
-    doc = fitz.open(inp_path)
+    doc = open_pdf_checked(inp_path)
     total = len(doc)
     if total == 0:
         log("⚠ PDF has no pages.")
@@ -609,8 +739,14 @@ def merge_pdfs(
             if progress_callback:
                 progress_callback(i, total)
             log(f"  + {p}")
-            with fitz.open(p) as src:
+            src = open_pdf_checked(p)
+            try:
                 merged.insert_pdf(src)
+            finally:
+                try:
+                    src.close()
+                except Exception:
+                    pass
         if not cancelled:
             merged.save(final_out)
             log(f"✅ Merged PDF saved: {final_out}")

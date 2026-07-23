@@ -41,6 +41,7 @@ except Exception:
 
 
 THEMES_LIGHT_DEFAULT = "flatly"
+THEMES_DARK_DEFAULT = "darkly"
 
 
 # -------------------- Help dialog helper (auto sizing) --------------------
@@ -106,14 +107,17 @@ def run_gui():
     else:
         root = tk.Tk()
 
+    initial_theme = (
+        THEMES_DARK_DEFAULT if cfg.get("dark_mode", False) else THEMES_LIGHT_DEFAULT
+    )
     style = None
     if HAS_TTKB:
         try:
-            style = tb.Style(theme=cfg.get("theme", THEMES_LIGHT_DEFAULT))
+            style = tb.Style(theme=initial_theme)
         except Exception:
             style = None
 
-    root.title("SplitPayPDF Engine + PDF Tools")
+    root.title(f"{core.APP_NAME} {core.APP_VERSION} — Payroll Splitter + PDF Tools")
 
     # App icon (optional)
     try:
@@ -138,6 +142,25 @@ def run_gui():
     def ui(fn, *args, **kwargs):
         root.after(0, lambda: fn(*args, **kwargs))
 
+    # ---------------- Menu bar (Help ▸ About) ----------------
+    def show_about():
+        text = (
+            f"{core.APP_NAME} {core.APP_VERSION}\n\n"
+            f"{core.APP_DESCRIPTION}\n\n"
+            "Runs fully offline. No installation, no admin rights, and no "
+            "network access required."
+        )
+        show_help_dialog(root, f"About {core.APP_NAME}", text)
+
+    try:
+        menubar = tk.Menu(root)
+        help_menu = tk.Menu(menubar, tearoff=0)
+        help_menu.add_command(label=f"About {core.APP_NAME}", command=show_about)
+        menubar.add_cascade(label="Help", menu=help_menu)
+        root.config(menu=menubar)
+    except Exception:
+        pass
+
     main = ttk.Frame(root)
     main.pack(fill="both", expand=True, padx=8, pady=8)
     # The notebook (row 1) sizes to its content; the results/log pane (row 3)
@@ -157,27 +180,24 @@ def run_gui():
     ).grid(row=0, column=0, sticky="w")
 
     if style is not None:
-        theme_var = tk.StringVar(value=style.theme.name)
-        ttk.Label(topbar, text="Theme:").grid(row=0, column=1, sticky="e", padx=(0, 4))
-        theme_combo = ttk.Combobox(
-            topbar,
-            textvariable=theme_var,
-            values=sorted(style.theme_names()),
-            state="readonly",
-            width=14,
-        )
-        theme_combo.grid(row=0, column=2, sticky="e")
+        dark_mode = tk.BooleanVar(value=cfg.get("dark_mode", False))
 
-        def on_theme_change(event=None):
-            name = theme_var.get()
+        def apply_theme():
+            name = THEMES_DARK_DEFAULT if dark_mode.get() else THEMES_LIGHT_DEFAULT
             try:
                 style.theme_use(name)
+                cfg["dark_mode"] = dark_mode.get()
                 cfg["theme"] = name
                 core.save_config(cfg)
             except Exception:
                 pass
 
-        theme_combo.bind("<<ComboboxSelected>>", on_theme_change)
+        ttk.Checkbutton(
+            topbar,
+            text="🌙 Dark mode",
+            variable=dark_mode,
+            command=apply_theme,
+        ).grid(row=0, column=1, sticky="e")
 
     notebook = ttk.Notebook(main)
     notebook.grid(row=1, column=0, sticky="nsew")
@@ -359,21 +379,22 @@ def run_gui():
     ).grid(row=0, column=1, sticky="w")
 
     safe_cb = ttk.Checkbutton(
-        opts, text="SAFE debug mode (simulate only)", variable=debug_safe
+        opts, text="Preview mode (no files written)", variable=debug_safe
     )
     safe_cb.grid(row=1, column=0, sticky="w", pady=(2, 0))
 
     def safe_help():
         text = (
-            "Safe Mode Help\n\n"
-            "In SAFE mode, the splitter simulates the entire process:\n"
+            "Preview Mode\n\n"
+            "In Preview mode, the splitter simulates the entire process "
+            "without changing anything on disk:\n"
             "- No folders are created\n"
             "- No PDFs are written\n"
             "- No audit CSV is saved\n\n"
-            "You can review everything in the Results table and the log\n"
-            "before running for real."
+            "You can review everything in the Results table and the log first.\n"
+            "Turn Preview mode OFF to actually split and save the files."
         )
-        show_help_dialog(root, "Safe Mode Help", text)
+        show_help_dialog(root, "Preview Mode", text)
 
     ttk.Button(opts, text="?", width=2, command=safe_help).grid(
         row=1, column=1, sticky="w", padx=(4, 0), pady=(2, 0)
@@ -471,19 +492,26 @@ def run_gui():
         row=1, column=2, columnspan=2, sticky="e", padx=4, pady=2
     )
 
-    ttk.Label(schema_frame, text="Folder naming pattern:").grid(
-        row=2, column=0, sticky="w", padx=4, pady=2
-    )
+    folder_label = ttk.Label(schema_frame, text="Folder naming pattern:")
+    folder_label.grid(row=2, column=0, sticky="w", padx=4, pady=2)
     folder_entry = ttk.Entry(schema_frame, textvariable=folder_pattern_var)
     folder_entry.grid(row=2, column=1, sticky="ew", padx=4, pady=2)
 
     def apply_lock_state():
-        state = "readonly" if lock_patterns.get() else "normal"
-        file_entry.config(state=state)
-        folder_entry.config(state=state)
-        save_btn.config(state="disabled" if lock_patterns.get() else "normal")
-        remove_btn.config(state="disabled" if lock_patterns.get() else "normal")
-        cfg["pattern_locked"] = lock_patterns.get()
+        locked = lock_patterns.get()
+        base_state = "readonly" if locked else "normal"
+        file_entry.config(state=base_state)
+        # The folder pattern only matters when routing to employee folders is
+        # on — disable it (and its label) otherwise so it recedes visually.
+        if save_to_folders.get():
+            folder_entry.config(state=base_state)
+            folder_label.config(state="normal")
+        else:
+            folder_entry.config(state="disabled")
+            folder_label.config(state="disabled")
+        save_btn.config(state="disabled" if locked else "normal")
+        remove_btn.config(state="disabled" if locked else "normal")
+        cfg["pattern_locked"] = locked
         core.save_config(cfg)
 
     lock_cb = ttk.Checkbutton(
@@ -494,6 +522,8 @@ def run_gui():
     )
     lock_cb.grid(row=3, column=0, sticky="w", padx=4, pady=(4, 6))
 
+    # Re-evaluate folder-pattern state whenever the routing option changes.
+    save_to_folders.trace_add("write", lambda *a: apply_lock_state())
     apply_lock_state()
 
     def on_schema_selected(event=None):
@@ -501,7 +531,12 @@ def run_gui():
         if not name or name == "None":
             return
         data = core.load_schema(name)
-        if not data:
+        if data is None:
+            messagebox.showwarning(
+                "Preset",
+                f"Could not read the preset '{name}'. It may be corrupted or "
+                "unreadable. Your current patterns were kept.",
+            )
             return
         if not lock_patterns.get():
             fp = data.get("file_pattern")
@@ -824,6 +859,30 @@ def run_gui():
             messagebox.showerror("Error", "Please select a valid payroll PDF.")
             return
 
+        # Pre-flight: friendly handling of password-protected / corrupt PDFs,
+        # and a clear warning for scanned / image-only PDFs (no selectable text).
+        try:
+            info = core.preflight_pdf(inp)
+        except core.PdfError as e:
+            messagebox.showwarning("Cannot open PDF", str(e))
+            return
+        except Exception as e:
+            core.write_app_log(f"[preflight] {inp}: {e!r}")
+            messagebox.showerror(
+                "Cannot open PDF",
+                "This PDF could not be opened. It may be corrupted or in an "
+                "unsupported format.",
+            )
+            return
+        if not info["has_text"]:
+            if not messagebox.askyesno(
+                "No selectable text",
+                "No selectable text was found in this PDF. It may be scanned "
+                "or image-only. SplitPayPDF needs selectable text to build "
+                "filenames automatically.\n\nContinue anyway?",
+            ):
+                return
+
         out_dir = pay_out.get().strip()
         if not out_dir:
             out_dir = os.path.join(os.path.dirname(inp), "output_pdfs")
@@ -844,7 +903,13 @@ def run_gui():
         schema_name = selected_schema.get()
         if schema_name and schema_name != "None":
             data = core.load_schema(schema_name)
-            if data and not lock_patterns.get():
+            if data is None:
+                messagebox.showwarning(
+                    "Preset",
+                    f"Could not read the preset '{schema_name}'. It may be "
+                    "corrupted. Continuing with the patterns shown on screen.",
+                )
+            elif not lock_patterns.get():
                 if data.get("file_pattern"):
                     file_pat = data["file_pattern"]
                 if "folder_pattern" in data:
@@ -894,6 +959,9 @@ def run_gui():
                     cancel_event=cancel_event,
                 )
                 ui(finish_split, res)
+            except core.PdfError as e:
+                ui(append_log, f"⚠ {e}")
+                ui(messagebox.showwarning, "Cannot open PDF", str(e))
             except Exception as e:
                 ui(append_log, f"❌ ERROR during split: {e}")
                 ui(messagebox.showerror, "Error", f"An error occurred:\n{e}")
@@ -903,10 +971,19 @@ def run_gui():
         threading.Thread(target=worker, daemon=True).start()
 
     run_btn = ttk.Button(
-        tab_pay, text="4 · ▶ Run splitter", command=run_splitter
+        tab_pay, text="4 · ▶ Split & save files", command=run_splitter
     )
     run_btn.grid(row=6, column=0, columnspan=3, sticky="ew", padx=4, pady=(4, 6))
     action_buttons.append(run_btn)
+
+    def refresh_run_label(*_):
+        if debug_safe.get():
+            run_btn.config(text="4 · ▶ Preview (no files written)")
+        else:
+            run_btn.config(text="4 · ▶ Split & save files")
+
+    debug_safe.trace_add("write", refresh_run_label)
+    refresh_run_label()
 
     # ============ TAB 2: PDF Tools ============
     tab_tools = ttk.Frame(notebook)
@@ -1034,6 +1111,9 @@ def run_gui():
                     cancel_event=cancel_event,
                 )
                 ui(messagebox.showinfo, "Done", "Extract completed.")
+            except core.PdfError as e:
+                ui(append_log, f"⚠ {e}")
+                ui(messagebox.showwarning, "Cannot open PDF", str(e))
             except Exception as e:
                 ui(append_log, f"❌ Extract error: {e}")
                 ui(messagebox.showerror, "Error", str(e))
@@ -1056,36 +1136,86 @@ def run_gui():
     tools_merge_out = tk.StringVar(value=cfg.get("tools_merge_out", ""))
     merge_name_var = tk.StringVar(value=cfg.get("merge_name", ""))
 
-    ttk.Label(merge_frame, text="Selected files:").grid(
-        row=0, column=0, sticky="w", padx=4, pady=2
+    ttk.Label(merge_frame, text="Files to merge (top → bottom order):").grid(
+        row=0, column=0, columnspan=4, sticky="w", padx=4, pady=(2, 0)
     )
-    merge_list = scrolledtext.ScrolledText(merge_frame, height=8, width=40)
-    merge_list.grid(row=1, column=0, columnspan=3, sticky="nsew", padx=4, pady=2)
+    merge_listbox = tk.Listbox(
+        merge_frame, height=8, activestyle="none", selectmode=tk.SINGLE
+    )
+    merge_listbox.grid(row=1, column=0, columnspan=3, sticky="nsew", padx=(4, 0), pady=2)
+    merge_scroll = ttk.Scrollbar(
+        merge_frame, orient="vertical", command=merge_listbox.yview
+    )
+    merge_scroll.grid(row=1, column=3, sticky="ns", pady=2)
+    merge_listbox.configure(yscrollcommand=merge_scroll.set)
     merge_frame.rowconfigure(1, weight=1)
+
+    def refresh_merge_listbox(select_index=None):
+        merge_listbox.delete(0, tk.END)
+        for p in tools_merge_files:
+            merge_listbox.insert(tk.END, os.path.basename(p))
+        if select_index is not None and 0 <= select_index < len(tools_merge_files):
+            merge_listbox.selection_clear(0, tk.END)
+            merge_listbox.selection_set(select_index)
+            merge_listbox.activate(select_index)
+            merge_listbox.see(select_index)
+
+    def merge_selected_index():
+        sel = merge_listbox.curselection()
+        return sel[0] if sel else None
 
     def add_merge_files():
         nonlocal tools_merge_files
         paths = filedialog.askopenfilenames(filetypes=[("PDF files", "*.pdf")])
         if not paths:
             return
-        tools_merge_files = list(paths)
-        merge_list.delete("1.0", tk.END)
-        for p in tools_merge_files:
-            merge_list.insert(tk.END, p + "\n")
+        # Append (don't replace) so users can build up a list from several picks.
+        tools_merge_files = tools_merge_files + list(paths)
+        refresh_merge_listbox(len(tools_merge_files) - 1)
         if not tools_merge_out.get():
             tools_merge_out.set(os.path.dirname(tools_merge_files[0]))
 
-    ttk.Button(merge_frame, text="Add PDFs...", command=add_merge_files).grid(
-        row=2, column=0, sticky="w", padx=4, pady=2
-    )
+    def remove_merge_file():
+        nonlocal tools_merge_files
+        idx = merge_selected_index()
+        if idx is None:
+            return
+        tools_merge_files = tools_merge_files[:idx] + tools_merge_files[idx + 1:]
+        refresh_merge_listbox(idx if tools_merge_files else None)
+
+    def move_merge_up():
+        nonlocal tools_merge_files
+        tools_merge_files, new_idx = core.move_item(
+            tools_merge_files, merge_selected_index(), -1
+        )
+        refresh_merge_listbox(new_idx)
+
+    def move_merge_down():
+        nonlocal tools_merge_files
+        tools_merge_files, new_idx = core.move_item(
+            tools_merge_files, merge_selected_index(), +1
+        )
+        refresh_merge_listbox(new_idx)
 
     def clear_merge_files():
         nonlocal tools_merge_files
         tools_merge_files = []
-        merge_list.delete("1.0", tk.END)
+        refresh_merge_listbox()
 
-    ttk.Button(merge_frame, text="Clear List", command=clear_merge_files).grid(
-        row=2, column=1, sticky="w", padx=4, pady=2
+    merge_btnbar = ttk.Frame(merge_frame)
+    merge_btnbar.grid(row=2, column=0, columnspan=4, sticky="w", padx=4, pady=(2, 4))
+    ttk.Button(merge_btnbar, text="Add…", command=add_merge_files).pack(side="left")
+    ttk.Button(merge_btnbar, text="Remove", command=remove_merge_file).pack(
+        side="left", padx=(6, 0)
+    )
+    ttk.Button(merge_btnbar, text="↑ Up", command=move_merge_up).pack(
+        side="left", padx=(6, 0)
+    )
+    ttk.Button(merge_btnbar, text="↓ Down", command=move_merge_down).pack(
+        side="left", padx=(6, 0)
+    )
+    ttk.Button(merge_btnbar, text="Clear", command=clear_merge_files).pack(
+        side="left", padx=(6, 0)
     )
 
     ttk.Label(merge_frame, text="Output folder:").grid(
@@ -1150,6 +1280,9 @@ def run_gui():
                     cancel_event=cancel_event,
                 )
                 ui(messagebox.showinfo, "Done", "Merge completed.")
+            except core.PdfError as e:
+                ui(append_log, f"⚠ {e}")
+                ui(messagebox.showwarning, "Cannot open PDF", str(e))
             except Exception as e:
                 ui(append_log, f"❌ Merge error: {e}")
                 ui(messagebox.showerror, "Error", str(e))

@@ -11,9 +11,9 @@ are made at build time:
 
 1. **tkinter + Tcl/Tk** are copied in from the build machine's normal Python
    install (the embeddable ZIP does not include them).
-2. Dependencies from `requirements.txt` (`pymupdf`, `pandas`) are installed
-   with `pip install --target` into the bundle's `Lib\site-packages` —
-   pip runs only on the build machine.
+2. Dependencies from `requirements.txt` (`pymupdf`, `ttkbootstrap`,
+   `tkinterdnd2`) are installed with `pip install --target` into the bundle's
+   `Lib\site-packages` — pip runs only on the build machine.
 
 The launcher `Run_SplitPayPDF.cmd` starts `python\python.exe app\SplitPayPDF.py`
 with paths relative to its own location. No `.exe` is created or packed.
@@ -33,8 +33,8 @@ From the repository root:
 powershell -ExecutionPolicy Bypass -File .\build_portable.ps1
 ```
 
-Output: `SplitPayPDF_Portable\` next to the script (~250–350 MB, mostly
-pandas/numpy). Options:
+Output: `SplitPayPDF_Portable\` next to the script (roughly 100–150 MB; the
+bulk is PyMuPDF and the bundled Tcl/Tk). Options:
 
 ```
 -OutputDir D:\somewhere\SplitPayPDF_Portable   # different output location
@@ -43,8 +43,8 @@ pandas/numpy). Options:
                                                 # must match build Python version)
 ```
 
-The script ends with a smoke test (`import fitz, pandas, tkinter` using the
-bundled runtime). If that fails the build aborts.
+The script ends with a smoke test (`import fitz, tkinter, ttkbootstrap,
+tkinterdnd2` using the bundled runtime). If that fails the build aborts.
 
 ## Verify, then distribute
 
@@ -63,7 +63,7 @@ SplitPayPDF_Portable/
 ├── Run_SplitPayPDF.cmd      launcher (plain text)
 ├── README_PORTABLE.txt      user instructions
 ├── IT_SECURITY_NOTES.txt    for IT/security review
-├── app/                     SplitPayPDF.py + README, LICENSE, requirements.txt
+├── app/                     SplitPayPDF.py + splitpay_core.py + README, LICENSE, requirements.txt
 ├── python/                  embeddable CPython + tcl/tk + site-packages
 ├── data/                    optional user workspace (not required by the app)
 └── logs/                    optional; the real app log is %APPDATA%\SplitPayPDF\
@@ -74,6 +74,7 @@ SplitPayPDF_Portable/
 - 64-bit Windows 10/11 targets only (matches the bundled runtime).
 - Settings/schemas/log remain per-user in `%APPDATA%\SplitPayPDF` — unchanged
   app behavior; nothing is written into the portable folder or Program Files.
-- Rebuild the bundle whenever `SplitPayPDF.py` or `requirements.txt` changes.
+- Rebuild the bundle whenever `SplitPayPDF.py`, `splitpay_core.py` or
+  `requirements.txt` changes.
 - If the company blocks `python.exe` by policy (AppLocker/WDAC, not ASR),
   this approach won't help — test on one company machine first.

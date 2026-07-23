@@ -212,5 +212,141 @@ class TestAuditCsv(unittest.TestCase):
         self.assertIn("Unmatched_Page_2.pdf", lines[2])
 
 
+class TestMoveItem(unittest.TestCase):
+    def test_move_up(self):
+        self.assertEqual(core.move_item(["a", "b", "c"], 2, -1), (["a", "c", "b"], 1))
+
+    def test_move_down(self):
+        self.assertEqual(core.move_item(["a", "b", "c"], 0, +1), (["b", "a", "c"], 1))
+
+    def test_move_up_at_top_is_noop(self):
+        self.assertEqual(core.move_item(["a", "b"], 0, -1), (["a", "b"], 0))
+
+    def test_move_down_at_bottom_is_noop(self):
+        self.assertEqual(core.move_item(["a", "b"], 1, +1), (["a", "b"], 1))
+
+    def test_none_index_is_noop(self):
+        self.assertEqual(core.move_item(["a", "b"], None, -1), (["a", "b"], None))
+
+    def test_returns_new_list(self):
+        original = ["a", "b"]
+        result, _ = core.move_item(original, 0, +1)
+        self.assertIsNot(result, original)
+        self.assertEqual(original, ["a", "b"])  # unchanged
+
+
+class TestTextEmptiness(unittest.TestCase):
+    def test_all_blank_is_empty(self):
+        self.assertTrue(core.text_is_effectively_empty(["", "   ", "\n\t"]))
+
+    def test_none_entries_are_empty(self):
+        self.assertTrue(core.text_is_effectively_empty([None, ""]))
+
+    def test_any_text_is_not_empty(self):
+        self.assertFalse(core.text_is_effectively_empty(["", "John Doe", ""]))
+
+    def test_empty_list_is_empty(self):
+        self.assertTrue(core.text_is_effectively_empty([]))
+
+
+class TestFriendlyOpenError(unittest.TestCase):
+    def test_password_maps_to_protected_message(self):
+        self.assertIn("password-protected", core._friendly_open_error("needs password"))
+
+    def test_encrypt_maps_to_protected_message(self):
+        self.assertIn("password-protected", core._friendly_open_error("document is encrypted"))
+
+    def test_missing_file_message(self):
+        self.assertIn("could not be found", core._friendly_open_error("No such file"))
+
+    def test_generic_maps_to_corrupt_message(self):
+        self.assertIn("corrupted", core._friendly_open_error("format error: garbage"))
+
+
+class _FakeDoc:
+    def __init__(self, needs_pass=False, pages=None):
+        self.needs_pass = needs_pass
+        self._pages = list(pages or [])
+        self.closed = False
+
+    def __len__(self):
+        return len(self._pages)
+
+    def load_page(self, i):
+        text = self._pages[i]
+
+        class _P:
+            def get_text(self_inner):
+                return text
+
+        return _P()
+
+    def close(self):
+        self.closed = True
+
+
+class TestOpenPdfChecked(unittest.TestCase):
+    def setUp(self):
+        self._orig_open = getattr(core.fitz, "open", None)
+
+    def tearDown(self):
+        core.fitz.open = self._orig_open
+
+    def test_password_protected_raises_pdf_error(self):
+        core.fitz.open = lambda path: _FakeDoc(needs_pass=True)
+        with self.assertRaises(core.PdfError) as ctx:
+            core.open_pdf_checked("x.pdf")
+        self.assertIn("password-protected", str(ctx.exception))
+
+    def test_corrupt_open_raises_pdf_error(self):
+        def boom(path):
+            raise RuntimeError("cannot open broken file: format error")
+
+        core.fitz.open = boom
+        with self.assertRaises(core.PdfError) as ctx:
+            core.open_pdf_checked("x.pdf")
+        self.assertIn("corrupted", str(ctx.exception))
+
+    def test_valid_pdf_returns_doc(self):
+        core.fitz.open = lambda path: _FakeDoc(pages=["hello"])
+        doc = core.open_pdf_checked("x.pdf")
+        self.assertEqual(len(doc), 1)
+
+    def test_preflight_reports_text_presence(self):
+        core.fitz.open = lambda path: _FakeDoc(pages=["Name", "228"])
+        info = core.preflight_pdf("x.pdf")
+        self.assertEqual(info["page_count"], 2)
+        self.assertTrue(info["has_text"])
+
+    def test_preflight_flags_scanned_pdf(self):
+        core.fitz.open = lambda path: _FakeDoc(pages=["", "   "])
+        info = core.preflight_pdf("x.pdf")
+        self.assertFalse(info["has_text"])
+
+
+class TestSchemaLoading(unittest.TestCase):
+    def test_corrupt_json_returns_none(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "bad.json")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("{ this is not valid json ")
+            self.assertIsNone(core._read_schema_file(path))
+
+    def test_non_object_json_returns_none(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "list.json")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("[1, 2, 3]")
+            self.assertIsNone(core._read_schema_file(path))
+
+    def test_valid_schema_returns_dict(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "ok.json")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write('{"file_pattern": "[LINE 0].pdf", "folder_pattern": ""}')
+            data = core._read_schema_file(path)
+            self.assertEqual(data["file_pattern"], "[LINE 0].pdf")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

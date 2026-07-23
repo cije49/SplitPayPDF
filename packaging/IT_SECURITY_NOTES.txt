@@ -8,10 +8,12 @@ A portable folder containing:
   distribution" published by the Python Software Foundation at
   python.org; python.exe and the Python DLLs are Authenticode-signed
   by the PSF).
-- Two open-source Python libraries installed as plain files:
-  PyMuPDF (PDF processing) and pandas (CSV audit log), plus their
-  dependencies (e.g. numpy).
-- The application source code as a readable .py file (app\SplitPayPDF.py).
+- Open-source Python libraries installed as plain files:
+  PyMuPDF (PDF processing), plus the optional UI helpers ttkbootstrap
+  (theming) and tkinterdnd2 (drag-and-drop). The CSV audit log uses only
+  the Python standard library.
+- The application source code as readable .py files
+  (app\SplitPayPDF.py and app\splitpay_core.py).
 - A plain-text .cmd launcher that starts:
       python\python.exe app\SplitPayPDF.py
 
@@ -45,7 +47,8 @@ RUNTIME BEHAVIOR
 
 AUDITABILITY
 ------------
-- app\SplitPayPDF.py is the complete application - human-readable.
+- app\SplitPayPDF.py (GUI) and app\splitpay_core.py (PDF/logic) together
+  are the complete application - human-readable.
 - Run_SplitPayPDF.cmd is human-readable.
 - The python\ folder can be hash-compared against the official
   python.org embeddable ZIP for the bundled version.
